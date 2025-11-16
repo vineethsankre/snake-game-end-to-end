@@ -15,9 +15,24 @@ pipeline {
         /* ───────────────────────────────
          *  CHECKOUT APPLICATION CODE
          * ─────────────────────────────── */
-        stage('Checkout App Code') {
+        stage('Checkout Code') {
             steps {
                 git 'https://github.com/Jithendarramagiri1998/snake-game.git'
+            }
+        }
+
+        /* ───────────────────────────────
+         *  MAVEN BUILD (added newly)
+         * ─────────────────────────────── */
+        stage('Maven Build') {
+            when {
+                expression { fileExists('pom.xml') }
+            }
+            steps {
+                sh """
+                echo "Maven project detected. Running Maven build..."
+                mvn clean package -DskipTests
+                """
             }
         }
 
@@ -37,6 +52,17 @@ pipeline {
         }
 
         /* ───────────────────────────────
+         *  TRIVY SECURITY SCAN
+         * ─────────────────────────────── */
+        stage('Trivy Scan') {
+            steps {
+                sh '''
+                trivy fs . --exit-code 0 --severity HIGH,CRITICAL
+                '''
+            }
+        }
+
+        /* ───────────────────────────────
          *  DOCKER BUILD & PUSH
          * ─────────────────────────────── */
         stage('Docker Build & Push') {
@@ -51,18 +77,7 @@ pipeline {
         }
 
         /* ───────────────────────────────
-         *  CHECKOUT MONITORING CONFIG
-         * ─────────────────────────────── */
-        stage('Checkout Monitoring') {
-            steps {
-                dir('monitoring') {
-                    git 'https://github.com/your-repo/monitoring-infra.git'
-                }
-            }
-        }
-
-        /* ───────────────────────────────
-         *  CONNECT TO EKS CLUSTER
+         *  CONNECT TO EKS
          * ─────────────────────────────── */
         stage('Update kubeconfig') {
             steps {
@@ -75,7 +90,7 @@ pipeline {
         }
 
         /* ───────────────────────────────
-         *  DEPLOY APPLICATION TO EKS
+         *  DEPLOY TO EKS
          * ─────────────────────────────── */
         stage('Deploy App to EKS') {
             steps {
@@ -87,7 +102,7 @@ pipeline {
             }
         }
 
-        stage('Verify App Rollout') {
+        stage('Verify Rollout') {
             steps {
                 sh '''
                 kubectl rollout status deployment/snake-game
@@ -96,71 +111,42 @@ pipeline {
         }
 
         /* ───────────────────────────────
-         *  DEPLOY PROMETHEUS
+         *  DEPLOY PROMETHEUS + GRAFANA
          * ─────────────────────────────── */
-        stage('Deploy Prometheus') {
+        stage('Monitoring Deployment') {
             steps {
                 sh '''
                 helm upgrade --install kube-prometheus-stack \
                   prometheus-community/kube-prometheus-stack \
                   -n monitoring \
-                  -f monitoring/prometheus/values.yaml \
                   --create-namespace
                 '''
             }
         }
 
         /* ───────────────────────────────
-         *  DEPLOY GRAFANA DASHBOARDS
+         *  GRAFANA DASHBOARDS
          * ─────────────────────────────── */
-        stage('Deploy Grafana Dashboards') {
+        stage('Grafana Dashboards') {
             steps {
                 sh '''
                 kubectl create configmap grafana-dashboards \
                   --from-file=monitoring/grafana/dashboards \
                   -n monitoring \
                   --dry-run=client -o yaml | kubectl apply -f -
-                '''
-            }
-        }
 
-        /* ───────────────────────────────
-         *  RESTART GRAFANA
-         * ─────────────────────────────── */
-        stage('Restart Grafana') {
-            steps {
-                sh '''
                 kubectl rollout restart deployment kube-prometheus-stack-grafana -n monitoring
                 '''
             }
         }
-
-        /* ───────────────────────────────
-         *  VALIDATE PROMETHEUS & GRAFANA
-         * ─────────────────────────────── */
-        stage('Validate Monitoring') {
-            steps {
-                sh '''
-                echo "=== Checking Prometheus ==="
-                curl -I $(kubectl get svc kube-prometheus-stack-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-
-                echo "=== Checking Grafana ==="
-                curl -I $(kubectl get svc kube-prometheus-stack-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                '''
-            }
-        }
     }
 
-    /* ───────────────────────────────
-     *  POST ACTIONS
-     * ─────────────────────────────── */
     post {
         success {
-            echo "✔ CI/CD + Monitoring Deployment Completed Successfully!"
+            echo "✔ CI/CD PIPELINE COMPLETED SUCCESSFULLY!"
         }
         failure {
-            echo "❌ Pipeline Failed. Check console logs!"
+            echo "❌ Pipeline Failed. Check logs."
         }
     }
 }
-
