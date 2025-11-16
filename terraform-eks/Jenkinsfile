@@ -16,6 +16,8 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir('terraform-eks') {
+                    sh 'echo "Current dir:" && pwd'
+                    sh 'echo "List files:" && ls -l'
                     sh 'terraform init'
                 }
             }
@@ -24,17 +26,12 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir('terraform-eks') {
+                    sh 'echo "Current dir:" && pwd'
+                    sh 'echo "List files:" && ls -l'
                     sh 'terraform plan'
                 }
             }
         }
 
-        stage('Terraform Apply') {
-            steps {
-                dir('terraform-eks') {
-                    sh 'terraform apply -auto-approve'
-                }
-            }
-        }
     }
 }
