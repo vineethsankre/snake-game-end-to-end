@@ -3,40 +3,23 @@ pipeline {
 
     stages {
 
-        stage('Show Workspace Info') {
+        stage('Init') {
             steps {
-                sh 'echo "======== WORKSPACE ========="'
                 sh 'pwd'
-                sh 'echo "======== ROOT FILES ======="'
-                sh 'ls -l'
+                sh 'ls -lah'
+                sh 'terraform init'
             }
         }
 
-        stage('Checkout Repo') {
+        stage('Plan') {
             steps {
-                git url: 'https://github.com/Jithendarramagiri1998/snake-game.git', branch: 'main'
+                sh 'terraform plan'
             }
         }
 
-        stage('After Checkout - Verify Repo') {
+        stage('Apply') {
             steps {
-                sh 'echo "======== AFTER CHECKOUT ======="'
-                sh 'pwd'
-                sh 'ls -l'
-                sh 'echo "======== CHECK TERRAFORM DIR ======="'
-                sh 'ls -l terraform-eks || echo "terraform-eks NOT FOUND"'
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
-                dir('terraform-eks') {
-                    sh 'echo "======== TERRAFORM DIR ======="'
-                    sh 'pwd'
-                    sh 'ls -l'
-                    sh 'terraform version'
-                    sh 'terraform plan'
-                }
+                sh 'terraform apply -auto-approve'
             }
         }
     }
