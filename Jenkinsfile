@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_CREDS = credentials('dockerhub-creds')
+        DOCKER_CREDS = credentials('docker')
         SONAR = credentials('sonar-token')
-        AWS_CREDS = credentials('aws-eks-creds')
+        AWS_CREDS = credentials('aws-jenkins-creds')
         APP_IMAGE = "jithendarramagiri1998/snake-game:latest"
         CLUSTER_NAME = "my-eks-cluster"
         REGION = "ap-south-1"
@@ -17,7 +17,7 @@ pipeline {
          * ─────────────────────────────── */
         stage('Checkout App Code') {
             steps {
-                git 'https://github.com/your-repo/snake-game.git'
+                git 'https://github.com/Jithendarramagiri1998/snake-game.git'
             }
         }
 
