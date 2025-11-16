@@ -46,7 +46,7 @@ pipeline {
                 ${SCANNER_HOME}/bin/sonar-scanner \
                 -Dsonar.projectKey=snake \
                 -Dsonar.sources=. \
-                -Dsonar.host.url=http://<your-sonar-ip>:9000 \
+                -Dsonar.host.url=http://44.220.152.225:9000 \
                 -Dsonar.login=$SONAR
             '''
         }
