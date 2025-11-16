@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git 'https://github.com/Jithendarramagiri1998/snake-game.git'
+                git 'https://github.com/Jithendarramagiri1998/snake-game/terraform-eks.git'
             }
         }
 
