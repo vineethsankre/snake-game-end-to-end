@@ -19,12 +19,15 @@ pipeline {
         }
 
         stage('Terraform Plan') {
-            steps {
-                sh '''
+    steps {
+        dir('terraform-eks') {
+            sh '''
+                terraform init
                 terraform plan
-                '''
-            }
+            '''
         }
+    }
+}
 
         stage('Terraform Apply') {
             steps {
