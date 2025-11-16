@@ -7,35 +7,39 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps { git 'https://github.com/Jithendarramagiri1998/snake-game.git' }
+            steps {
+                git 'https://github.com/Jithendarramagiri1998/snake-game.git'
+            }
         }
 
         stage('Terraform Init') {
             steps {
-                sh '''
-                terraform init
-                '''
+                dir('terraform-eks') {
+                    sh '''
+                        terraform init
+                    '''
+                }
             }
         }
 
         stage('Terraform Plan') {
-    steps {
-        dir('terraform-eks') {
-            sh '''
-                terraform init
-                terraform plan
-            '''
+            steps {
+                dir('terraform-eks') {
+                    sh '''
+                        terraform plan
+                    '''
+                }
+            }
         }
-    }
-}
 
         stage('Terraform Apply') {
             steps {
-                sh '''
-                terraform apply -auto-approve
-                '''
+                dir('terraform-eks') {
+                    sh '''
+                        terraform apply -auto-approve
+                    '''
+                }
             }
         }
     }
 }
-
