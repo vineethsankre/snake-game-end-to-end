@@ -42,13 +42,15 @@ pipeline {
        stage('SonarQube Analysis') {
     steps {
         withSonarQubeEnv('MySonar') {
-            withSonarQubeEnv('MySonar') {
+            script {
+                def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+
                 sh """
-                    ${SCANNER_HOME}/bin/sonar-scanner \
+                    ${scannerHome}/bin/sonar-scanner \
                     -Dsonar.projectKey=snake \
                     -Dsonar.sources=. \
-                    -Dsonar.host.url=http://44.220.152.225:9000 \
-                    -Dsonar.login=$SONAR
+                    -Dsonar.host.url=$SONAR_HOST_URL \
+                    -Dsonar.login=$SONAR_PSW
                 """
             }
         }
