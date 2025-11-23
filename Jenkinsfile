@@ -49,14 +49,13 @@ pipeline {
                     ${scannerHome}/bin/sonar-scanner \
                     -Dsonar.projectKey=snake \
                     -Dsonar.sources=. \
-                    -Dsonar.host.url=$SONAR_HOST_URL \
-                    -Dsonar.login=$SONAR_PSW
+                    -Dsonar.host.url=\${SONAR_HOST_URL} \
+                    -Dsonar.login=\${SONAR}
                 """
             }
         }
     }
 }
-
         /* ───────────────────────────────
          *  TRIVY SECURITY SCAN
          * ─────────────────────────────── */
