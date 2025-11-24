@@ -111,18 +111,22 @@ pipeline {
     steps {
         withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
             sh '''
-                echo ">>> Setting HOME and KUBECONFIG"
+                echo ">>> Setting HOME & KUBECONFIG"
                 export HOME=/var/lib/jenkins
                 export KUBECONFIG=$HOME/.kube/config
 
+                echo ">>> Checking Identity"
                 aws sts get-caller-identity
 
-                kubectl get nodes
+                echo ">>> Checking cluster connectivity"
+                kubectl --kubeconfig=$KUBECONFIG get nodes
 
+                echo ">>> Updating deployment image"
                 sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
 
-                kubectl apply -f k8s/deployment.yaml --validate=false
-                kubectl apply -f k8s/service.yaml --validate=false
+                echo ">>> Applying manifests"
+                kubectl --kubeconfig=$KUBECONFIG apply -f k8s/deployment.yaml --validate=false
+                kubectl --kubeconfig=$KUBECONFIG apply -f k8s/service.yaml --validate=false
             '''
         }
     }
@@ -137,7 +141,7 @@ pipeline {
                 export HOME=/var/lib/jenkins
                 export KUBECONFIG=$HOME/.kube/config
 
-                kubectl rollout status deployment/snake-game
+                kubectl --kubeconfig=$KUBECONFIG rollout status deployment/snake-game
             '''
         }
     }
