@@ -150,23 +150,21 @@ pipeline {
  *  PROMETHEUS + GRAFANA
  * ─────────────────────────────── */
 
-    stage('Debug Helm Environment') {
+   stage('Debug Helm Environment') {
     steps {
         sh '''
-        echo ">>> HOME = $HOME"
-        echo ">>> WHOAMI = $(whoami)"
+        echo ">>> Debug: BEGIN"
+        echo "HOME (before override) = $HOME"
+        echo "WHOAMI = $(whoami)"
+        echo "PATH = $PATH"
 
-        echo ">>> Check PATH"
-        echo $PATH
+        # show kubectl & aws (optional)
+        which kubectl || echo "kubectl NOT FOUND"
+        kubectl version --client --short || true
+        which aws || echo "aws NOT FOUND"
+        aws --version || true
 
-        echo ">>> Check if helm exists"
-        which helm || echo "helm NOT FOUND"
-
-        echo ">>> Check Helm Version"
-        helm version || echo "Unable to run helm"
-
-        echo ">>> Check Helm Repos"
-        helm repo list || echo "No helm repos found"
+        echo ">>> Debug: END"
         '''
     }
 }
@@ -174,27 +172,64 @@ pipeline {
 stage('Monitoring Deployment') {
     steps {
         sh '''
-        echo ">>> Setting correct HOME and PATH for Jenkins"
+        set -euo pipefail
+        echo ">>> Monitoring deployment - starting"
+
+        # Ensure we use Jenkins home and kubeconfig used earlier
         export HOME=/var/lib/jenkins
         export KUBECONFIG=$HOME/.kube/config
-        export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
 
-        echo ">>> Checking Helm binary"
+        # Add a local bin to avoid sudo permission issues and ensure it's on PATH
+        export HELM_INSTALL_DIR=$HOME/.local/bin
+        mkdir -p "$HELM_INSTALL_DIR"
+        export PATH="$HELM_INSTALL_DIR:$PATH"
+
+        echo "HOME = $HOME"
+        echo "KUBECONFIG = $KUBECONFIG"
+        echo "PATH = $PATH"
+
+        # If helm is missing, download a stable helm binary and install to $HOME/.local/bin
+        if ! command -v helm >/dev/null 2>&1; then
+          echo "helm not found — installing helm to $HELM_INSTALL_DIR"
+          TMPDIR=$(mktemp -d)
+          cd "$TMPDIR"
+          HELM_VER="v3.12.3"   # locked version to avoid surprises; change if you prefer another
+          curl -LO "https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz"
+          tar -zxvf "helm-${HELM_VER}-linux-amd64.tar.gz"
+          mv linux-amd64/helm "$HELM_INSTALL_DIR/helm"
+          chmod +x "$HELM_INSTALL_DIR/helm"
+          cd -
+          rm -rf "$TMPDIR"
+        else
+          echo "helm found at: $(which helm)"
+        fi
+
+        echo ">>> Helm version:"
         helm version
 
-        echo ">>> Adding Prometheus Community Repo"
-        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+        # Ensure kubeconfig exists
+        if [ ! -f "$KUBECONFIG" ]; then
+          echo "ERROR: kubeconfig not found at $KUBECONFIG"
+          ls -la $(dirname "$KUBECONFIG") || true
+          exit 1
+        fi
 
-        echo ">>> Updating Helm Repositories"
+        # Add repo and update (always run to be idempotent)
+        echo ">>> Adding prometheus-community repo (idempotent)"
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+        echo ">>> Updating helm repos"
         helm repo update
 
-        echo ">>> Listing Helm Repos"
+        echo ">>> Current helm repos:"
         helm repo list
 
-        echo ">>> Deploying kube-prometheus-stack"
+        # Install/upgrade the kube-prometheus-stack chart
+        echo ">>> Installing/upgrading kube-prometheus-stack"
         helm upgrade --install kube-prometheus-stack \
-            prometheus-community/kube-prometheus-stack \
-            -n monitoring --create-namespace
+          prometheus-community/kube-prometheus-stack \
+          -n monitoring --create-namespace --wait --timeout 10m
+
+        echo ">>> Monitoring deployment - completed"
         '''
     }
 }
