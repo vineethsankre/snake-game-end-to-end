@@ -149,6 +149,28 @@ pipeline {
         /* ───────────────────────────────
  *  PROMETHEUS + GRAFANA
  * ─────────────────────────────── */
+
+    stage('Debug Helm Environment') {
+    steps {
+        sh '''
+        echo ">>> HOME = $HOME"
+        echo ">>> WHOAMI = $(whoami)"
+
+        echo ">>> Check PATH"
+        echo $PATH
+
+        echo ">>> Check if helm exists"
+        which helm || echo "helm NOT FOUND"
+
+        echo ">>> Check Helm Version"
+        helm version || echo "Unable to run helm"
+
+        echo ">>> Check Helm Repos"
+        helm repo list || echo "No helm repos found"
+        '''
+    }
+}
+
 stage('Monitoring Deployment') {
     steps {
         sh '''
