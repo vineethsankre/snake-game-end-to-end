@@ -80,23 +80,28 @@ pipeline {
          *  UPDATE KUBECONFIG
          * ───────────────────────────────────── */
         stage('Update kubeconfig') {
-            steps {
-                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-                    sh '''
-                    export HOME=/root
-                    export KUBECONFIG=/root/.kube/config
-                    mkdir -p /root/.kube
+    steps {
+        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+            sh '''
+                echo ">>> Setting HOME for Jenkins"
+                export HOME=/var/lib/jenkins
+                mkdir -p $HOME/.kube
 
-                    aws eks update-kubeconfig \
-                      --name $CLUSTER_NAME \
-                      --region $REGION \
-                      --kubeconfig /root/.kube/config
+                export KUBECONFIG=$HOME/.kube/config
 
-                    kubectl get nodes
-                    '''
-                }
-            }
+                aws sts get-caller-identity
+
+                aws eks update-kubeconfig \
+                  --name $CLUSTER_NAME \
+                  --region $REGION \
+                  --kubeconfig $HOME/.kube/config
+
+                echo ">>> kubeconfig created:"
+                ls -l $HOME/.kube/
+            '''
         }
+    }
+}
 
         /* ─────────────────────────────────────
          *  DEPLOY TO EKS
