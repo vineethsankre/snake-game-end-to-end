@@ -120,37 +120,21 @@ pipeline {
          * ─────────────────────────────── */
         stage('Deploy to EKS') {
     steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-jenkins-creds']]) {
+        sh '''
+            echo "AWS identity:"
+            aws sts get-caller-identity
 
-            sh '''
-                # Export AWS credentials
-                export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-                export AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN
+            aws eks update-kubeconfig \
+              --name $CLUSTER_NAME \
+              --region $REGION
 
-                echo ">>> Checking AWS identity..."
-                aws sts get-caller-identity
+            kubectl get nodes
 
-                echo ">>> Updating kubeconfig"
-                aws eks update-kubeconfig \
-                    --name $CLUSTER_NAME \
-                    --region $REGION
+            sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
 
-                echo ">>> Testing kubectl connectivity"
-                kubectl get nodes
-
-                echo ">>> Updating deployment image"
-                sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
-
-                echo ">>> Applying manifests"
-                kubectl apply -f k8s/deployment.yaml --validate=false
-                kubectl apply -f k8s/service.yaml --validate=false
-
-                echo ">>> Verifying rollout"
-                kubectl rollout status deployment/snake-game
-            '''
-        }
+            kubectl apply -f k8s/deployment.yaml --validate=false
+            kubectl apply -f k8s/service.yaml --validate=false
+        '''
     }
 }
 
