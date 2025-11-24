@@ -7,65 +7,51 @@ pipeline {
         APP_IMAGE = "jithendarramagiri1998/snake-game:latest"
         CLUSTER_NAME = "my-eks-cluster"
         REGION = "ap-south-1"
+        SERVICE_NAME = "snake-game"
+        NAMESPACE = "default"
+        HOME_DIR = "/var/lib/jenkins"
+        KUBECONFIG_PATH = "/var/lib/jenkins/.kube/config"
+        BIN_PATH = "/var/lib/jenkins/.local/bin"
     }
 
     stages {
 
-        /* ───────────────────────────────
-         *  CHECKOUT APPLICATION CODE
-         * ─────────────────────────────── */
         stage('Checkout Code') {
             steps {
                 git 'https://github.com/Jithendarramagiri1998/snake-game.git'
             }
         }
 
-        /* ───────────────────────────────
-         *  MAVEN BUILD
-         * ─────────────────────────────── */
         stage('Maven Build') {
             when { expression { fileExists('pom.xml') } }
             steps {
-                sh """
-                echo "Maven project detected. Running Maven build..."
-                mvn clean package -DskipTests
-                """
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        /* ───────────────────────────────
-         *  SONARQUBE ANALYSIS
-         * ─────────────────────────────── */
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('MySonar') {
                     script {
                         def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
                         sh """
-                            export SONAR_SCANNER_OPTS="-Xmx1024m"
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.projectKey=snake \
-                              -Dsonar.sources=. \
-                              -Dsonar.host.url=$SONAR_HOST_URL \
-                              -Dsonar.token=$SONAR
+                        ${scannerHome}/bin/sonar-scanner \
+                          -Dsonar.projectKey=snake \
+                          -Dsonar.sources=. \
+                          -Dsonar.host.url=$SONAR_HOST_URL \
+                          -Dsonar.token=$SONAR
                         """
                     }
                 }
             }
         }
 
-        /* ───────────────────────────────
-         *  TRIVY SCAN
-         * ─────────────────────────────── */
         stage('Trivy Scan') {
             steps {
                 sh 'trivy fs . --exit-code 0 --severity HIGH,CRITICAL'
             }
         }
 
-        /* ───────────────────────────────
-         *  DOCKER BUILD & PUSH
-         * ─────────────────────────────── */
         stage('Docker Build & Push') {
             steps {
                 sh '''
@@ -77,94 +63,68 @@ pipeline {
             }
         }
 
-        /* ───────────────────────────────
-         *  UPDATE KUBECONFIG
-         * ─────────────────────────────── */
         stage('Update kubeconfig') {
-    steps {
-        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-            sh '''
-                echo ">>> Setting HOME for Jenkins"
-                export HOME=/var/lib/jenkins
-                mkdir -p $HOME/.kube
+            steps {
+                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+                    sh '''
+                    export HOME=$HOME_DIR
+                    export PATH=$BIN_PATH:$PATH
+                    export KUBECONFIG=$KUBECONFIG_PATH
 
-                export KUBECONFIG=$HOME/.kube/config
+                    mkdir -p $HOME_DIR/.kube
 
-                aws sts get-caller-identity
+                    aws eks update-kubeconfig \
+                      --name $CLUSTER_NAME \
+                      --region $REGION \
+                      --kubeconfig $KUBECONFIG_PATH
 
-                aws eks update-kubeconfig \
-                  --name $CLUSTER_NAME \
-                  --region $REGION \
-                  --kubeconfig $HOME/.kube/config
-
-                echo ">>> kubeconfig created:"
-                ls -l $HOME/.kube/
-            '''
+                    kubectl get nodes
+                    '''
+                }
+            }
         }
-    }
-}
 
-        /* ───────────────────────────────
-         *  DEPLOY TO EKS
-         * ─────────────────────────────── */
         stage('Deploy to EKS') {
-    steps {
-        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-            sh '''
-                echo ">>> Setting HOME & KUBECONFIG"
-                export HOME=/var/lib/jenkins
-                export KUBECONFIG=$HOME/.kube/config
+            steps {
+                sh '''
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
 
-                echo ">>> Checking Identity"
-                aws sts get-caller-identity
-
-                echo ">>> Checking cluster connectivity"
-                kubectl --kubeconfig=$KUBECONFIG get nodes
-
-                echo ">>> Updating deployment image"
                 sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
 
-                echo ">>> Applying manifests"
-                kubectl --kubeconfig=$KUBECONFIG apply -f k8s/deployment.yaml --validate=false
-                kubectl --kubeconfig=$KUBECONFIG apply -f k8s/service.yaml --validate=false
-            '''
+                kubectl apply -f k8s/deployment.yaml --validate=false
+                kubectl apply -f k8s/service.yaml --validate=false
+                '''
+            }
         }
-    }
-}
-        /* ───────────────────────────────
-         *  VERIFY ROLLOUT
-         * ─────────────────────────────── */
+
         stage('Verify Rollout') {
-    steps {
-        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-            sh '''
-                export HOME=/var/lib/jenkins
-                export KUBECONFIG=$HOME/.kube/config
+            steps {
+                sh '''
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
 
-                kubectl --kubeconfig=$KUBECONFIG rollout status deployment/snake-game
-            '''
+                kubectl rollout status deployment/snake-game
+                '''
+            }
         }
-    }
-}
 
-        /* ─────────────────────────────────────
-         *  FETCH LOAD BALANCER URL
-         * ───────────────────────────────────── */
         stage('Get LoadBalancer URL') {
             steps {
                 script {
                     def lb_url = sh(
                         script: '''
-                            export KUBECONFIG=/root/.kube/config
-                            kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+                        export PATH=/var/lib/jenkins/.local/bin:$PATH
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                        kubectl get svc snake-game -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
                         ''',
                         returnStdout: true
                     ).trim()
 
-                    echo "*******************************************************"
-                    echo "  🚀 Your Application LoadBalancer URL:"
-                    echo "  http://${lb_url}"
-                    echo "*******************************************************"
+                    echo "***************************************************"
+                    echo "  🚀 Application Deployed Successfully!"
+                    echo "  🌐 URL: http://${lb_url}"
+                    echo "***************************************************"
                 }
             }
         }
@@ -172,10 +132,10 @@ pipeline {
 
     post {
         success {
-            echo "✔ CI/CD PIPELINE COMPLETED SUCCESSFULLY!"
+            echo "✔ Pipeline Completed Successfully"
         }
         failure {
-            echo "❌ Pipeline Failed. Check logs."
+            echo "❌ Pipeline Failed"
         }
     }
 }
