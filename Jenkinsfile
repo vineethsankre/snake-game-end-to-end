@@ -153,18 +153,22 @@ pipeline {
    stage('Debug Helm Environment') {
     steps {
         sh '''
-        echo ">>> Debug: BEGIN"
-        echo "HOME (before override) = $HOME"
+        echo ">>> Debugging Helm Environment"
         echo "WHOAMI = $(whoami)"
+        echo "HOME = $HOME"
         echo "PATH = $PATH"
 
-        # show kubectl & aws (optional)
-        which kubectl || echo "kubectl NOT FOUND"
-        kubectl version --client --short || true
-        which aws || echo "aws NOT FOUND"
-        aws --version || true
+        export HOME=/root
+        export PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
 
-        echo ">>> Debug: END"
+        echo ">>> After override:"
+        echo "HOME = $HOME"
+        echo "PATH = $PATH"
+
+        which helm || echo "helm NOT FOUND"
+        helm version || echo "helm version failed"
+
+        helm repo list || echo "no helm repos found"
         '''
     }
 }
@@ -172,64 +176,37 @@ pipeline {
 stage('Monitoring Deployment') {
     steps {
         sh '''
-        set -euo pipefail
-        echo ">>> Monitoring deployment - starting"
+        echo ">>> Starting Monitoring Deployment with ROOT env"
 
-        # Ensure we use Jenkins home and kubeconfig used earlier
-        export HOME=/var/lib/jenkins
-        export KUBECONFIG=$HOME/.kube/config
+        # FORCE pipeline to use ROOT environment
+        export HOME=/root
+        export PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
+        export KUBECONFIG=/root/.kube/config
 
-        # Add a local bin to avoid sudo permission issues and ensure it's on PATH
-        export HELM_INSTALL_DIR=$HOME/.local/bin
-        mkdir -p "$HELM_INSTALL_DIR"
-        export PATH="$HELM_INSTALL_DIR:$PATH"
-
+        echo "WHOAMI = $(whoami)"
         echo "HOME = $HOME"
         echo "KUBECONFIG = $KUBECONFIG"
         echo "PATH = $PATH"
-
-        # If helm is missing, download a stable helm binary and install to $HOME/.local/bin
-        if ! command -v helm >/dev/null 2>&1; then
-          echo "helm not found — installing helm to $HELM_INSTALL_DIR"
-          TMPDIR=$(mktemp -d)
-          cd "$TMPDIR"
-          HELM_VER="v3.12.3"   # locked version to avoid surprises; change if you prefer another
-          curl -LO "https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz"
-          tar -zxvf "helm-${HELM_VER}-linux-amd64.tar.gz"
-          mv linux-amd64/helm "$HELM_INSTALL_DIR/helm"
-          chmod +x "$HELM_INSTALL_DIR/helm"
-          cd -
-          rm -rf "$TMPDIR"
-        else
-          echo "helm found at: $(which helm)"
-        fi
+        which helm
 
         echo ">>> Helm version:"
         helm version
 
-        # Ensure kubeconfig exists
-        if [ ! -f "$KUBECONFIG" ]; then
-          echo "ERROR: kubeconfig not found at $KUBECONFIG"
-          ls -la $(dirname "$KUBECONFIG") || true
-          exit 1
-        fi
-
-        # Add repo and update (always run to be idempotent)
-        echo ">>> Adding prometheus-community repo (idempotent)"
+        echo ">>> Adding helm repo"
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
-        echo ">>> Updating helm repos"
+
+        echo ">>> Updating repo"
         helm repo update
 
-        echo ">>> Current helm repos:"
+        echo ">>> Repo list"
         helm repo list
 
-        # Install/upgrade the kube-prometheus-stack chart
-        echo ">>> Installing/upgrading kube-prometheus-stack"
+        echo ">>> Installing kube-prometheus-stack"
         helm upgrade --install kube-prometheus-stack \
           prometheus-community/kube-prometheus-stack \
-          -n monitoring --create-namespace --wait --timeout 10m
+          -n monitoring --create-namespace
 
-        echo ">>> Monitoring deployment - completed"
+        echo ">>> Monitoring deployment completed successfully!"
         '''
     }
 }
