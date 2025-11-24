@@ -36,26 +36,37 @@ pipeline {
             }
         }
 
-        /* ───────────────────────────────
-         *  SONARQUBE CODE ANALYSIS
+               /* ───────────────────────────────
+         *  SONARQUBE CODE ANALYSIS (FIXED)
          * ─────────────────────────────── */
-       stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('MySonar') {
-            script {
-                def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('MySonar') {
+                    script {
+                        def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
 
-                sh """
-                    ${scannerHome}/bin/sonar-scanner \
-                    -Dsonar.projectKey=snake \
-                    -Dsonar.sources=. \
-                    -Dsonar.host.url=\${SONAR_HOST_URL} \
-                    -Dsonar.login=\${SONAR}
-                """
+                        sh """
+                            export SONAR_SCANNER_OPTS="-Xmx1024m"
+                            export NODE_OPTIONS="--max-old-space-size=1536"
+
+                            # use system node if available
+                            if command -v node >/dev/null 2>&1; then
+                                echo "Using system Node.js at: \$(which node)"
+                                export SONAR_NODEJS_EXECUTABLE=\$(which node)
+                            fi
+
+                            ${scannerHome}/bin/sonar-scanner \
+                              -Dsonar.projectKey=snake \
+                              -Dsonar.sources=. \
+                              -Dsonar.host.url=$SONAR_HOST_URL \
+                              -Dsonar.token=$SONAR \
+                              -Dsonar.javascript.node.maxspace=1536
+                        """
+                    }
+                }
             }
         }
-    }
-}
+
         /* ───────────────────────────────
          *  TRIVY SECURITY SCAN
          * ─────────────────────────────── */
