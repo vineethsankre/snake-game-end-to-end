@@ -152,16 +152,14 @@ pipeline {
 stage('Monitoring Deployment') {
     steps {
         sh '''
-        # Add Prometheus Community Repo
+        # Add repo (required for Jenkins agent)
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
-        
-        # Update repo index
         helm repo update
 
-        # Install / upgrade kube-prometheus-stack
+        # Install kube-prometheus-stack
         helm upgrade --install kube-prometheus-stack \
-          prometheus-community/kube-prometheus-stack \
-          -n monitoring --create-namespace
+            prometheus-community/kube-prometheus-stack \
+            -n monitoring --create-namespace
         '''
     }
 }
