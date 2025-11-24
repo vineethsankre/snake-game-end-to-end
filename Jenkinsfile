@@ -4,7 +4,6 @@ pipeline {
     environment {
         DOCKER_CREDS = credentials('docker')
         SONAR = credentials('sonar')
-        AWS_CREDS = credentials('aws-jenkins-creds')
         APP_IMAGE = "jithendarramagiri1998/snake-game:latest"
         CLUSTER_NAME = "my-eks-cluster"
         REGION = "ap-south-1"
@@ -22,12 +21,10 @@ pipeline {
         }
 
         /* ───────────────────────────────
-         *  MAVEN BUILD (added newly)
+         *  MAVEN BUILD
          * ─────────────────────────────── */
         stage('Maven Build') {
-            when {
-                expression { fileExists('pom.xml') }
-            }
+            when { expression { fileExists('pom.xml') } }
             steps {
                 sh """
                 echo "Maven project detected. Running Maven build..."
@@ -36,31 +33,21 @@ pipeline {
             }
         }
 
-               /* ───────────────────────────────
-         *  SONARQUBE CODE ANALYSIS (FIXED)
+        /* ───────────────────────────────
+         *  SONARQUBE ANALYSIS
          * ─────────────────────────────── */
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('MySonar') {
                     script {
                         def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-
                         sh """
                             export SONAR_SCANNER_OPTS="-Xmx1024m"
-                            export NODE_OPTIONS="--max-old-space-size=1536"
-
-                            # use system node if available
-                            if command -v node >/dev/null 2>&1; then
-                                echo "Using system Node.js at: \$(which node)"
-                                export SONAR_NODEJS_EXECUTABLE=\$(which node)
-                            fi
-
                             ${scannerHome}/bin/sonar-scanner \
                               -Dsonar.projectKey=snake \
                               -Dsonar.sources=. \
                               -Dsonar.host.url=$SONAR_HOST_URL \
-                              -Dsonar.token=$SONAR \
-                              -Dsonar.javascript.node.maxspace=1536
+                              -Dsonar.token=$SONAR
                         """
                     }
                 }
@@ -68,13 +55,11 @@ pipeline {
         }
 
         /* ───────────────────────────────
-         *  TRIVY SECURITY SCAN
+         *  TRIVY SCAN
          * ─────────────────────────────── */
         stage('Trivy Scan') {
             steps {
-                sh '''
-                trivy fs . --exit-code 0 --severity HIGH,CRITICAL
-                '''
+                sh 'trivy fs . --exit-code 0 --severity HIGH,CRITICAL'
             }
         }
 
@@ -93,27 +78,20 @@ pipeline {
         }
 
         /* ───────────────────────────────
-         *  CONNECT TO EKS
+         *  UPDATE KUBECONFIG
          * ─────────────────────────────── */
         stage('Update kubeconfig') {
-    steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-jenkins-creds']]) {
-
-            sh '''
-                export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-                export AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN
-
-                aws sts get-caller-identity
-
-                aws eks update-kubeconfig \
-                  --name $CLUSTER_NAME \
-                  --region $REGION
-            '''
+            steps {
+                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+                    sh '''
+                        aws sts get-caller-identity
+                        aws eks update-kubeconfig \
+                          --name $CLUSTER_NAME \
+                          --region $REGION
+                    '''
+                }
+            }
         }
-    }
-}
 
         /* ───────────────────────────────
          *  DEPLOY TO EKS
@@ -122,63 +100,45 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
                     sh '''
-                        echo ">>> Checking AWS identity..."
+                        echo ">>> Checking identity..."
                         aws sts get-caller-identity
 
-                        echo ">>> Updating kubeconfig"
-                        aws eks update-kubeconfig \
-                          --name $CLUSTER_NAME \
-                          --region $REGION
-
-                        echo ">>> Checking cluster connectivity"
+                        echo ">>> Checking cluster"
                         kubectl get nodes
 
-                        echo ">>> Updating deployment image"
                         sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
 
-                        echo ">>> Applying manifests"
                         kubectl apply -f k8s/deployment.yaml --validate=false
                         kubectl apply -f k8s/service.yaml --validate=false
                     '''
                 }
             }
         }
-    }
-}
-
-        stage('Verify Rollout') {
-    steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-jenkins-creds']]) {
-
-            sh '''
-                export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-                export AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN
-
-                kubectl rollout status deployment/snake-game
-            '''
-        }
-    }
-}
 
         /* ───────────────────────────────
-         *  DEPLOY PROMETHEUS + GRAFANA
+         *  VERIFY ROLLOUT
+         * ─────────────────────────────── */
+        stage('Verify Rollout') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+                    sh 'kubectl rollout status deployment/snake-game'
+                }
+            }
+        }
+
+        /* ───────────────────────────────
+         *  PROMETHEUS + GRAFANA
          * ─────────────────────────────── */
         stage('Monitoring Deployment') {
             steps {
                 sh '''
                 helm upgrade --install kube-prometheus-stack \
                   prometheus-community/kube-prometheus-stack \
-                  -n monitoring \
-                  --create-namespace
+                  -n monitoring --create-namespace
                 '''
             }
         }
 
-        /* ───────────────────────────────
-         *  GRAFANA DASHBOARDS
-         * ─────────────────────────────── */
         stage('Grafana Dashboards') {
             steps {
                 sh '''
