@@ -147,31 +147,37 @@ pipeline {
     }
 }
         /* ───────────────────────────────
-         *  PROMETHEUS + GRAFANA
-         * ─────────────────────────────── */
-        stage('Monitoring Deployment') {
-            steps {
-                sh '''
-                helm upgrade --install kube-prometheus-stack \
-                  prometheus-community/kube-prometheus-stack \
-                  -n monitoring --create-namespace
-                '''
-            }
-        }
+ *  PROMETHEUS + GRAFANA
+ * ─────────────────────────────── */
+stage('Monitoring Deployment') {
+    steps {
+        sh '''
+        # Add Prometheus Community Repo
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+        
+        # Update repo index
+        helm repo update
 
-        stage('Grafana Dashboards') {
-            steps {
-                sh '''
-                kubectl create configmap grafana-dashboards \
-                  --from-file=monitoring/grafana/dashboards \
-                  -n monitoring \
-                  --dry-run=client -o yaml | kubectl apply -f -
-
-                kubectl rollout restart deployment kube-prometheus-stack-grafana -n monitoring
-                '''
-            }
-        }
+        # Install / upgrade kube-prometheus-stack
+        helm upgrade --install kube-prometheus-stack \
+          prometheus-community/kube-prometheus-stack \
+          -n monitoring --create-namespace
+        '''
     }
+}
+
+stage('Grafana Dashboards') {
+    steps {
+        sh '''
+        kubectl create configmap grafana-dashboards \
+          --from-file=monitoring/grafana/dashboards \
+          -n monitoring \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        kubectl rollout restart deployment kube-prometheus-stack-grafana -n monitoring
+        '''
+    }
+}
 
     post {
         success {
