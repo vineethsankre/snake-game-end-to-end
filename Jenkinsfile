@@ -119,22 +119,30 @@ pipeline {
          *  DEPLOY TO EKS
          * ─────────────────────────────── */
         stage('Deploy to EKS') {
-    steps {
-        sh '''
-            echo "AWS identity:"
-            aws sts get-caller-identity
+            steps {
+                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+                    sh '''
+                        echo ">>> Checking AWS identity..."
+                        aws sts get-caller-identity
 
-            aws eks update-kubeconfig \
-              --name $CLUSTER_NAME \
-              --region $REGION
+                        echo ">>> Updating kubeconfig"
+                        aws eks update-kubeconfig \
+                          --name $CLUSTER_NAME \
+                          --region $REGION
 
-            kubectl get nodes
+                        echo ">>> Checking cluster connectivity"
+                        kubectl get nodes
 
-            sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
+                        echo ">>> Updating deployment image"
+                        sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
 
-            kubectl apply -f k8s/deployment.yaml --validate=false
-            kubectl apply -f k8s/service.yaml --validate=false
-        '''
+                        echo ">>> Applying manifests"
+                        kubectl apply -f k8s/deployment.yaml --validate=false
+                        kubectl apply -f k8s/service.yaml --validate=false
+                    '''
+                }
+            }
+        }
     }
 }
 
