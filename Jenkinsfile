@@ -152,9 +152,24 @@ pipeline {
 stage('Monitoring Deployment') {
     steps {
         sh '''
+        echo ">>> Setting HOME & PATH"
+        export HOME=/var/lib/jenkins
+        export KUBECONFIG=$HOME/.kube/config
+        export PATH=/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH
+
+        echo ">>> Checking Helm Version"
+        helm version
+
+        echo ">>> Adding Prometheus Repo"
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+        
+        echo ">>> Updating Repo"
         helm repo update
 
+        echo ">>> Listing Helm Repos"
+        helm repo list
+
+        echo ">>> Installing kube-prometheus-stack"
         helm upgrade --install kube-prometheus-stack \
             prometheus-community/kube-prometheus-stack \
             -n monitoring --create-namespace
