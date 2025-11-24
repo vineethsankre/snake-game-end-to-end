@@ -176,37 +176,13 @@ pipeline {
 stage('Monitoring Deployment') {
     steps {
         sh '''
-        echo ">>> Starting Monitoring Deployment with ROOT env"
-
-        # FORCE pipeline to use ROOT environment
         export HOME=/root
         export PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
         export KUBECONFIG=/root/.kube/config
 
-        echo "WHOAMI = $(whoami)"
-        echo "HOME = $HOME"
-        echo "KUBECONFIG = $KUBECONFIG"
-        echo "PATH = $PATH"
-        which helm
-
-        echo ">>> Helm version:"
-        helm version
-
-        echo ">>> Adding helm repo"
-        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
-
-        echo ">>> Updating repo"
-        helm repo update
-
-        echo ">>> Repo list"
-        helm repo list
-
-        echo ">>> Installing kube-prometheus-stack"
         helm upgrade --install kube-prometheus-stack \
-          prometheus-community/kube-prometheus-stack \
+          https://prometheus-community.github.io/helm-charts/kube-prometheus-stack-65.0.0.tgz \
           -n monitoring --create-namespace
-
-        echo ">>> Monitoring deployment completed successfully!"
         '''
     }
 }
