@@ -140,27 +140,25 @@ pipeline {
         /* ─────────────────────────────────────────────
          * GET LOADBALANCER URL
          * ───────────────────────────────────────────── */
-        stage('Get LoadBalancer URL') {
-            steps {
-                script {
-                    def lb_url = sh(
-                        script: '''
-                        export PATH=/var/lib/jenkins/.local/bin:$PATH
-                        export KUBECONFIG=/var/lib/jenkins/.kube/config
-                        kubectl get svc snake-game -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
-                        ''',
-                        returnStdout: true
-                    ).trim()
+       stage('Get LoadBalancer URL') {
+    steps {
+        script {
+            def lb_url = sh(
+                script: '''
+                export PATH=/var/lib/jenkins/.local/bin:$PATH
+                export KUBECONFIG=/var/lib/jenkins/.kube/config
+                kubectl get svc snake-game-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+                ''',
+                returnStdout: true
+            ).trim()
 
-                    echo "***************************************************"
-                    echo "  🚀 Application Deployed Successfully!"
-                    echo "  🌐 URL: http://${lb_url}"
-                    echo "***************************************************"
-                }
-            }
+            echo "***************************************************"
+            echo "  🚀 Application Deployed Successfully!"
+            echo "  🌐 URL: http://${lb_url}"
+            echo "***************************************************"
         }
-
     }
+}
 
     post {
         success {
