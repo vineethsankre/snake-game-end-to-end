@@ -11,31 +11,30 @@ pipeline {
 
     stages {
 
-        /* ───────────────────────────────
+        /* ─────────────────────────────────────
          *  CHECKOUT APPLICATION CODE
-         * ─────────────────────────────── */
+         * ───────────────────────────────────── */
         stage('Checkout Code') {
             steps {
                 git 'https://github.com/Jithendarramagiri1998/snake-game.git'
             }
         }
 
-        /* ───────────────────────────────
+        /* ─────────────────────────────────────
          *  MAVEN BUILD
-         * ─────────────────────────────── */
+         * ───────────────────────────────────── */
         stage('Maven Build') {
             when { expression { fileExists('pom.xml') } }
             steps {
-                sh """
-                echo "Maven project detected. Running Maven build..."
+                sh '''
                 mvn clean package -DskipTests
-                """
+                '''
             }
         }
 
-        /* ───────────────────────────────
+        /* ─────────────────────────────────────
          *  SONARQUBE ANALYSIS
-         * ─────────────────────────────── */
+         * ───────────────────────────────────── */
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('MySonar') {
@@ -54,18 +53,18 @@ pipeline {
             }
         }
 
-        /* ───────────────────────────────
-         *  TRIVY SCAN
-         * ─────────────────────────────── */
+        /* ─────────────────────────────────────
+         *  TRIVY SECURITY SCAN
+         * ───────────────────────────────────── */
         stage('Trivy Scan') {
             steps {
                 sh 'trivy fs . --exit-code 0 --severity HIGH,CRITICAL'
             }
         }
 
-        /* ───────────────────────────────
-         *  DOCKER BUILD & PUSH
-         * ─────────────────────────────── */
+        /* ─────────────────────────────────────
+         *  DOCKER BUILD + PUSH
+         * ───────────────────────────────────── */
         stage('Docker Build & Push') {
             steps {
                 sh '''
@@ -77,128 +76,107 @@ pipeline {
             }
         }
 
-        /* ───────────────────────────────
+        /* ─────────────────────────────────────
          *  UPDATE KUBECONFIG
-         * ─────────────────────────────── */
+         * ───────────────────────────────────── */
         stage('Update kubeconfig') {
-    steps {
-        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-            sh '''
-                echo ">>> Setting HOME for Jenkins"
-                export HOME=/var/lib/jenkins
-                mkdir -p $HOME/.kube
+            steps {
+                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+                    sh '''
+                    export HOME=/root
+                    export KUBECONFIG=/root/.kube/config
 
-                export KUBECONFIG=$HOME/.kube/config
+                    mkdir -p /root/.kube
 
-                aws sts get-caller-identity
+                    aws eks update-kubeconfig \
+                      --name $CLUSTER_NAME \
+                      --region $REGION \
+                      --kubeconfig /root/.kube/config
 
-                aws eks update-kubeconfig \
-                  --name $CLUSTER_NAME \
-                  --region $REGION \
-                  --kubeconfig $HOME/.kube/config
-
-                echo ">>> kubeconfig created:"
-                ls -l $HOME/.kube/
-            '''
+                    kubectl --kubeconfig=/root/.kube/config get nodes
+                    '''
+                }
+            }
         }
-    }
-}
 
-        /* ───────────────────────────────
-         *  DEPLOY TO EKS
-         * ─────────────────────────────── */
+        /* ─────────────────────────────────────
+         *  DEPLOY APP TO EKS
+         * ───────────────────────────────────── */
         stage('Deploy to EKS') {
-    steps {
-        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-            sh '''
-                echo ">>> Setting HOME & KUBECONFIG"
-                export HOME=/var/lib/jenkins
-                export KUBECONFIG=$HOME/.kube/config
+            steps {
+                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
+                    sh '''
+                    export HOME=/root
+                    export KUBECONFIG=/root/.kube/config
 
-                echo ">>> Checking Identity"
-                aws sts get-caller-identity
+                    sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
 
-                echo ">>> Checking cluster connectivity"
-                kubectl --kubeconfig=$KUBECONFIG get nodes
-
-                echo ">>> Updating deployment image"
-                sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
-
-                echo ">>> Applying manifests"
-                kubectl --kubeconfig=$KUBECONFIG apply -f k8s/deployment.yaml --validate=false
-                kubectl --kubeconfig=$KUBECONFIG apply -f k8s/service.yaml --validate=false
-            '''
+                    kubectl apply -f k8s/deployment.yaml --validate=false
+                    kubectl apply -f k8s/service.yaml --validate=false
+                    '''
+                }
+            }
         }
-    }
-}
-        /* ───────────────────────────────
+
+        /* ─────────────────────────────────────
          *  VERIFY ROLLOUT
-         * ─────────────────────────────── */
+         * ───────────────────────────────────── */
         stage('Verify Rollout') {
-    steps {
-        withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-            sh '''
-                export HOME=/var/lib/jenkins
-                export KUBECONFIG=$HOME/.kube/config
+            steps {
+                sh '''
+                export KUBECONFIG=/root/.kube/config
+                kubectl rollout status deployment/snake-game
+                '''
+            }
+        }
 
-                kubectl --kubeconfig=$KUBECONFIG rollout status deployment/snake-game
-            '''
+        /* ─────────────────────────────────────
+         *  PROMETHEUS + GRAFANA INSTALLATION
+         *  (Using direct chart URL – no repo needed)
+         * ───────────────────────────────────── */
+        stage('Monitoring Deployment') {
+            steps {
+                sh '''
+                export HOME=/root
+                export PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
+                export KUBECONFIG=/root/.kube/config
+
+                # Install Helm for root if not installed
+                if ! command -v helm >/dev/null 2>&1; then
+                  echo "Installing Helm..."
+                  curl -LO https://get.helm.sh/helm-v3.12.3-linux-amd64.tar.gz
+                  tar -zxvf helm-v3.12.3-linux-amd64.tar.gz
+                  mv linux-amd64/helm /root/.local/bin/helm
+                  chmod +x /root/.local/bin/helm
+                fi
+
+                echo "Installing Monitoring Stack..."
+
+                helm upgrade --install kube-prometheus-stack \
+                  https://prometheus-community.github.io/helm-charts/kube-prometheus-stack-65.0.0.tgz \
+                  -n monitoring --create-namespace --wait --timeout 10m
+                '''
+            }
+        }
+
+        /* ─────────────────────────────────────
+         *  GRAFANA DASHBOARDS CONFIG
+         * ───────────────────────────────────── */
+        stage('Grafana Dashboards') {
+            steps {
+                sh '''
+                export KUBECONFIG=/root/.kube/config
+
+                kubectl create configmap grafana-dashboards \
+                  --from-file=monitoring/grafana/dashboards \
+                  -n monitoring \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                kubectl rollout restart deployment kube-prometheus-stack-grafana -n monitoring
+                '''
+            }
         }
     }
-}
-        /* ───────────────────────────────
- *  PROMETHEUS + GRAFANA
- * ─────────────────────────────── */
-
-   stage('Debug Helm Environment') {
-    steps {
-        sh '''
-        echo ">>> Debugging Helm Environment"
-        echo "WHOAMI = $(whoami)"
-        echo "HOME = $HOME"
-        echo "PATH = $PATH"
-
-        export HOME=/root
-        export PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
-
-        echo ">>> After override:"
-        echo "HOME = $HOME"
-        echo "PATH = $PATH"
-
-        which helm || echo "helm NOT FOUND"
-        helm version || echo "helm version failed"
-
-        helm repo list || echo "no helm repos found"
-        '''
-    }
-}
-
-stage('Monitoring Deployment') {
-    steps {
-        sh '''
-        export HOME=/root
-        export PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
-        export KUBECONFIG=/root/.kube/config
-
-        helm upgrade --install kube-prometheus-stack \
-          https://prometheus-community.github.io/helm-charts/kube-prometheus-stack-65.0.0.tgz \
-          -n monitoring --create-namespace
-        '''
-    }
-}
-        
-stage('Grafana Dashboards') {
-    steps {
-        sh '''
-        kubectl create configmap grafana-dashboards \
-          --from-file=monitoring/grafana/dashboards \
-          -n monitoring \
-          --dry-run=client -o yaml | kubectl apply -f -
-
-        kubectl rollout restart deployment kube-prometheus-stack-grafana -n monitoring
-        '''
-    }
-}
 
     post {
         success {
