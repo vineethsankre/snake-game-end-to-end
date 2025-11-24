@@ -152,31 +152,31 @@ pipeline {
 stage('Monitoring Deployment') {
     steps {
         sh '''
-        echo ">>> Setting HOME & PATH"
+        echo ">>> Setting correct HOME and PATH for Jenkins"
         export HOME=/var/lib/jenkins
         export KUBECONFIG=$HOME/.kube/config
-        export PATH=/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH
+        export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
 
-        echo ">>> Checking Helm Version"
+        echo ">>> Checking Helm binary"
         helm version
 
-        echo ">>> Adding Prometheus Repo"
+        echo ">>> Adding Prometheus Community Repo"
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
-        
-        echo ">>> Updating Repo"
+
+        echo ">>> Updating Helm Repositories"
         helm repo update
 
         echo ">>> Listing Helm Repos"
         helm repo list
 
-        echo ">>> Installing kube-prometheus-stack"
+        echo ">>> Deploying kube-prometheus-stack"
         helm upgrade --install kube-prometheus-stack \
             prometheus-community/kube-prometheus-stack \
             -n monitoring --create-namespace
         '''
     }
 }
-
+        
 stage('Grafana Dashboards') {
     steps {
         sh '''
