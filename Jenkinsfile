@@ -145,25 +145,24 @@ pipeline {
         }
 
         stage('Get Application URL') {
-            steps {
-                script {
-                    sh """
-                    export KUBECONFIG=$KUBECONFIG_PATH
-                    echo "🌐 Application URL:"
+    steps {
+        script {
+            sh """
+            export KUBECONFIG=$KUBECONFIG_PATH
+            echo "🌐 Application URL:"
 
-                    SVC=\$(kubectl get svc -n $NAMESPACE -l app=$SERVICE_NAME \
-                        -o jsonpath="{.items[0].metadata.name}")
+            SVC=\$(kubectl get svc -n $NAMESPACE \
+                -o jsonpath="{.items[?(@.spec.type=='LoadBalancer')].metadata.name}")
 
-                    APP_HOST=\$(kubectl get svc \$SVC -n $NAMESPACE \
-                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            APP_HOST=\$(kubectl get svc \$SVC -n $NAMESPACE \
+                -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
 
-                    echo "✅ Application URL: http://\$APP_HOST"
-                    echo
-                    """
-                }
-            }
+            echo "✅ Application URL: http://\$APP_HOST"
+            echo
+            """
         }
-
+    }
+}
         stage('Get Grafana URL & Credentials + Import Dashboards') {
             steps {
                 script {
@@ -199,7 +198,6 @@ pipeline {
                 }
             }
         }
-
     }
 
     post {
