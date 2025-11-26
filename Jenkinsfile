@@ -112,8 +112,7 @@ pipeline {
               --region $REGION \
               --kubeconfig $KUBECONFIG_PATH
 
-            kubectl version --short || true
-
+           kubectl version --client
             '''
         }
     }
