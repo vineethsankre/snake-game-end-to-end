@@ -152,13 +152,12 @@ pipeline {
             echo "🌐 Application URL:"
 
             SVC=\$(kubectl get svc -n $NAMESPACE \
-                -o jsonpath="{.items[?(@.spec.type=='LoadBalancer')].metadata.name}")
+                -o jsonpath='{.items[0].metadata.name}')
 
             APP_HOST=\$(kubectl get svc \$SVC -n $NAMESPACE \
-                -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+                -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
             echo "✅ Application URL: http://\$APP_HOST"
-            echo
             """
         }
     }
