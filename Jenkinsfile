@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     environment {
         DOCKER_CREDS     = credentials('docker')
         SONAR            = credentials('sonar')
@@ -40,8 +44,7 @@ pipeline {
                                 -Dsonar.projectKey=snake \
                                 -Dsonar.sources=. \
                                 -Dsonar.host.url=${env.SONAR_HOST_URL} \
-                                -Dsonar.token=${SONAR_TOKEN} \
-                                -Dsonar.exclusions=**/.terraform/**,**/terraform-eks/**,**/k8s/**,**/.git/**,**/*.gz,**/*.tar,**/*.tar.gz
+                                -Dsonar.token=${SONAR_TOKEN}
                             """
                         }
                     }
@@ -57,7 +60,7 @@ pipeline {
 
         stage('Docker Build & Push') {
             steps {
-                sh '''
+                sh """
                 docker build -t snake-game:latest .
                 docker tag snake-game:latest $APP_IMAGE
 
@@ -65,64 +68,54 @@ pipeline {
                     -u "$DOCKER_CREDS_USR" --password-stdin
 
                 docker push $APP_IMAGE
-                '''
+                """
             }
         }
 
         stage('Update kubeconfig') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
-                    sh '''
+                    sh """
                     export HOME=$HOME_DIR
                     export PATH=$BIN_PATH:$PATH
                     export AWS_REGION=$REGION
                     export KUBECONFIG=$KUBECONFIG_PATH
 
-                    export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-                    export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-                    export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
-
-                    mkdir -p $HOME_DIR/.kube
-                    chown -R jenkins:jenkins $HOME_DIR/.kube
-
                     aws eks update-kubeconfig \
                       --name $CLUSTER_NAME \
                       --region $REGION \
                       --kubeconfig $KUBECONFIG_PATH
-
-                    kubectl version --client
-                    '''
+                    """
                 }
             }
         }
 
         stage('Deploy to EKS') {
             steps {
-                sh '''
+                sh """
                 export PATH=$BIN_PATH:$PATH
                 export KUBECONFIG=$KUBECONFIG_PATH
 
-                sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
-
-                kubectl apply -f k8s/deployment.yaml --validate=false
-                kubectl apply -f k8s/service.yaml --validate=false
-                '''
+                kubectl apply -f k8s/
+                kubectl set image deployment/snake-game snake-game=$APP_IMAGE -n $NAMESPACE
+                """
             }
         }
 
         stage('Verify Rollout') {
             steps {
-                sh '''
+                sh """
                 export PATH=$BIN_PATH:$PATH
                 export KUBECONFIG=$KUBECONFIG_PATH
-                kubectl rollout status deployment/snake-game
-                '''
+
+                kubectl rollout status deployment/snake-game -n $NAMESPACE --timeout=180s
+                """
             }
         }
 
         stage('Deploy Monitoring') {
             steps {
-                sh '''
+                sh """
                 export PATH=$BIN_PATH:$PATH
                 export KUBECONFIG=$KUBECONFIG_PATH
 
@@ -131,81 +124,78 @@ pipeline {
 
                 kubectl get ns monitoring || kubectl create namespace monitoring
 
-                helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring
-                '''
+                helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+                    -n monitoring --wait --timeout 5m
+                """
             }
         }
 
-       stage('Verify Monitoring') {
-    steps {
-        sh '''
-        export PATH=$BIN_PATH:$PATH
-        export KUBECONFIG=$KUBECONFIG_PATH
+        stage('Verify Monitoring') {
+            steps {
+                sh """
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
 
-        echo "🔍 Checking Grafana..."
-        kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
+                kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=300s
 
-        echo "🔍 Checking Prometheus Pod..."
-        kubectl get pods -n monitoring | grep prometheus-kube-prometheus-stack-prometheus || true
-
-        echo "🔍 Waiting for Prometheus Ready..."
-        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=180s
-
-        echo "✅ Monitoring Ready"
-        '''
-    }
-}
-        stage('Get Application URL') {
-    steps {
-        script {
-            sh """
-            export KUBECONFIG=$KUBECONFIG_PATH
-            echo "🌐 Application URL:"
-
-            SVC=$(kubectl get svc -n $NAMESPACE -l app=$SERVICE_NAME \
-                -o jsonpath="{.items[0].metadata.name}")
-
-            echo "Detected service: $SVC"
-
-            kubectl get svc $SVC -n $NAMESPACE \
-                -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
-            echo
-            """
+                kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus \
+                    -n monitoring --timeout=300s
+                """
+            }
         }
-    }
-}
-        stage('Get Grafana URL') {
+
+        stage('Get Application URL') {
             steps {
                 script {
-                    sh '''
+                    sh """
                     export KUBECONFIG=$KUBECONFIG_PATH
-                    echo "🌐 Grafana URL:"
-                    kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+                    echo "🌐 Application URL:"
+
+                    SVC=\$(kubectl get svc -n $NAMESPACE -l app=$SERVICE_NAME \
+                        -o jsonpath="{.items[0].metadata.name}")
+
+                    APP_HOST=\$(kubectl get svc \$SVC -n $NAMESPACE \
+                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+
+                    echo "✅ Application URL: http://\$APP_HOST"
                     echo
-                    '''
+                    """
                 }
             }
         }
 
-        stage('Import Dashboards') {
+        stage('Get Grafana URL & Credentials + Import Dashboards') {
             steps {
                 script {
-                    sh '''
+                    sh """
                     export KUBECONFIG=$KUBECONFIG_PATH
 
-                    GRAFANA_HOST=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+                    until kubectl get svc -n monitoring kube-prometheus-stack-grafana \
+                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" | grep -qE '[a-z]'; do
+                        echo "⏳ Waiting for Grafana LoadBalancer..."
+                        sleep 5
+                    done
 
-                    ADMIN_PASS=$(kubectl get secret --namespace monitoring kube-prometheus-stack-grafana \
+                    GRAFANA_HOST=\$(kubectl get svc -n monitoring kube-prometheus-stack-grafana \
+                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+
+                    ADMIN_PASS=\$(kubectl get secret --namespace monitoring kube-prometheus-stack-grafana \
                         -o jsonpath="{.data.admin-password}" | base64 -d)
 
-                    curl -X POST http://admin:${ADMIN_PASS}@${GRAFANA_HOST}/api/dashboards/import \
+                    echo "✅ Grafana URL: http://\$GRAFANA_HOST"
+                    echo "👤 Username: admin"
+                    echo "🔑 Password: \$ADMIN_PASS"
+
+                    curl -X POST http://admin:\$ADMIN_PASS@\$GRAFANA_HOST/api/dashboards/import \
                         -H "Content-Type: application/json" \
                         -d '{"dashboard": {"id": 15759},"overwrite": true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}]}'
 
-                    curl -X POST http://admin:${ADMIN_PASS}@${GRAFANA_HOST}/api/dashboards/import \
+                    curl -X POST http://admin:\$ADMIN_PASS@\$GRAFANA_HOST/api/dashboards/import \
                         -H "Content-Type: application/json" \
                         -d '{"dashboard": {"id": 1860},"overwrite": true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}]}'
-                    '''
+
+                    echo "✅ Dashboards Imported Successfully"
+                    """
                 }
             }
         }
@@ -213,7 +203,7 @@ pipeline {
     }
 
     post {
-        success { echo "✔ Pipeline Completed Successfully" }
+        success { echo "✔ Pipeline Completed Successfully 🚀" }
         failure { echo "❌ Pipeline Failed" }
     }
 }
