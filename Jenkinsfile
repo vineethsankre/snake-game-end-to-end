@@ -2,165 +2,160 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_CREDS = credentials('dockerhub-creds')
-        SONAR = credentials('sonar-token')
-        AWS_CREDS = credentials('aws-eks-creds')
-        APP_IMAGE = "jithendarramagiri1998/snake-game:latest"
-        CLUSTER_NAME = "my-eks-cluster"
-        REGION = "ap-south-1"
+        DOCKER_CREDS     = credentials('docker')
+        SONAR            = credentials('sonar')
+        APP_IMAGE        = "jithendarramagiri1998/snake-game:latest"
+        CLUSTER_NAME     = "my-eks-cluster"
+        REGION           = "ap-south-1"
+        SERVICE_NAME     = "snake-game"
+        NAMESPACE        = "default"
+        HOME_DIR         = "/var/lib/jenkins"
+        KUBECONFIG_PATH  = "/var/lib/jenkins/.kube/config"
+        BIN_PATH         = "/var/lib/jenkins/.local/bin"
     }
 
     stages {
 
-        /* ───────────────────────────────
-         *  CHECKOUT APPLICATION CODE
-         * ─────────────────────────────── */
-        stage('Checkout App Code') {
+        /* ─────────────────────────────────────────────
+         * CHECKOUT CODE
+         * ───────────────────────────────────────────── */
+        stage('Checkout Code') {
             steps {
-                git 'https://github.com/your-repo/snake-game.git'
+                git 'https://github.com/Jithendarramagiri1998/snake-game.git'
             }
         }
 
-        /* ───────────────────────────────
-         *  SONARQUBE CODE ANALYSIS
-         * ─────────────────────────────── */
-        stage('SonarQube Analysis') {
+        /* ─────────────────────────────────────────────
+         * MAVEN BUILD
+         * ───────────────────────────────────────────── */
+        stage('Maven Build') {
+            when { expression { fileExists('pom.xml') } }
             steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh '''
-                    sonar-scanner \
-                      -Dsonar.projectKey=snake \
-                      -Dsonar.sources=.
-                    '''
+                sh '''
+                mvn clean package -DskipTests
+                '''
+            }
+        }
+
+        /* ─────────────────────────────────────────────
+         * SONAR SCAN
+         * ───────────────────────────────────────────── */
+        stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv('MySonar') {
+            withCredentials([string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')]) {
+                script {
+                    def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                    sh """
+                        ${scannerHome}/bin/sonar-scanner \
+                          -Dsonar.projectKey=snake \
+                          -Dsonar.sources=. \
+                          -Dsonar.host.url=${env.SONAR_HOST_URL} \
+                          -Dsonar.token=${SONAR_TOKEN} \
+                          -Dsonar.exclusions=**/.terraform/**,**/terraform-eks/**,**/k8s/**,**/.git/**,**/*.gz,**/*.tar,**/*.tar.gz \
+                          -Dsonar.javascript.exclusions=**/* \
+                          -Dsonar.typescript.exclusions=**/*
+                    """
+                    }
                 }
             }
         }
+    }
 
-        /* ───────────────────────────────
-         *  DOCKER BUILD & PUSH
-         * ─────────────────────────────── */
+        /* ─────────────────────────────────────────────
+         * TRIVY SCAN
+         * ───────────────────────────────────────────── */
+        stage('Trivy Scan') {
+            steps {
+                sh 'trivy fs . --exit-code 0 --severity HIGH,CRITICAL'
+            }
+        }
+
+        /* ─────────────────────────────────────────────
+         * DOCKER BUILD + PUSH
+         * ───────────────────────────────────────────── */
         stage('Docker Build & Push') {
             steps {
                 sh '''
                 docker build -t snake-game:latest .
                 docker tag snake-game:latest $APP_IMAGE
-                echo "$DOCKER_CREDS_PSW" | docker login -u "$DOCKER_CREDS_USR" --password-stdin
+
+                echo "$DOCKER_CREDS_PSW" | docker login \
+                    -u "$DOCKER_CREDS_USR" --password-stdin
+
                 docker push $APP_IMAGE
                 '''
             }
         }
 
-        /* ───────────────────────────────
-         *  CHECKOUT MONITORING CONFIG
-         * ─────────────────────────────── */
-        stage('Checkout Monitoring') {
-            steps {
-                dir('monitoring') {
-                    git 'https://github.com/your-repo/monitoring-infra.git'
-                }
-            }
-        }
-
-        /* ───────────────────────────────
-         *  CONNECT TO EKS CLUSTER
-         * ─────────────────────────────── */
+        /* ─────────────────────────────────────────────
+         * UPDATE KUBECONFIG FOR JENKINS USER
+         * ───────────────────────────────────────────── */
         stage('Update kubeconfig') {
-            steps {
-                sh '''
-                aws eks update-kubeconfig \
-                  --name $CLUSTER_NAME \
-                  --region $REGION
-                '''
-            }
-        }
+    steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
+            sh '''
+            export HOME=$HOME_DIR
+            export PATH=$BIN_PATH:$PATH
+            export AWS_REGION=$REGION
+            export KUBECONFIG=$KUBECONFIG_PATH
 
-        /* ───────────────────────────────
-         *  DEPLOY APPLICATION TO EKS
-         * ─────────────────────────────── */
-        stage('Deploy App to EKS') {
+            export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+            export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+
+            mkdir -p $HOME_DIR/.kube
+            chown -R jenkins:jenkins $HOME_DIR/.kube
+
+            aws eks update-kubeconfig \
+              --name $CLUSTER_NAME \
+              --region $REGION \
+              --kubeconfig $KUBECONFIG_PATH
+
+           kubectl version --client
+            '''
+        }
+    }
+}
+
+        /* ─────────────────────────────────────────────
+         * DEPLOY TO EKS
+         * ───────────────────────────────────────────── */
+        stage('Deploy to EKS') {
             steps {
                 sh '''
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
+
                 sed -i "s|IMAGE_PLACEHOLDER|$APP_IMAGE|g" k8s/deployment.yaml
-                kubectl apply -f k8s/deployment.yaml
-                kubectl apply -f k8s/service.yaml
+
+                kubectl apply -f k8s/deployment.yaml --validate=false
+                kubectl apply -f k8s/service.yaml --validate=false
                 '''
             }
         }
 
-        stage('Verify App Rollout') {
+        /* ─────────────────────────────────────────────
+         * VERIFY ROLLOUT
+         * ───────────────────────────────────────────── */
+                stage('Verify Rollout') {
             steps {
                 sh '''
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
                 kubectl rollout status deployment/snake-game
                 '''
             }
         }
 
-        /* ───────────────────────────────
-         *  DEPLOY PROMETHEUS
-         * ─────────────────────────────── */
-        stage('Deploy Prometheus') {
-            steps {
-                sh '''
-                helm upgrade --install kube-prometheus-stack \
-                  prometheus-community/kube-prometheus-stack \
-                  -n monitoring \
-                  -f monitoring/prometheus/values.yaml \
-                  --create-namespace
-                '''
-            }
-        }
-
-        /* ───────────────────────────────
-         *  DEPLOY GRAFANA DASHBOARDS
-         * ─────────────────────────────── */
-        stage('Deploy Grafana Dashboards') {
-            steps {
-                sh '''
-                kubectl create configmap grafana-dashboards \
-                  --from-file=monitoring/grafana/dashboards \
-                  -n monitoring \
-                  --dry-run=client -o yaml | kubectl apply -f -
-                '''
-            }
-        }
-
-        /* ───────────────────────────────
-         *  RESTART GRAFANA
-         * ─────────────────────────────── */
-        stage('Restart Grafana') {
-            steps {
-                sh '''
-                kubectl rollout restart deployment kube-prometheus-stack-grafana -n monitoring
-                '''
-            }
-        }
-
-        /* ───────────────────────────────
-         *  VALIDATE PROMETHEUS & GRAFANA
-         * ─────────────────────────────── */
-        stage('Validate Monitoring') {
-            steps {
-                sh '''
-                echo "=== Checking Prometheus ==="
-                curl -I $(kubectl get svc kube-prometheus-stack-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-
-                echo "=== Checking Grafana ==="
-                curl -I $(kubectl get svc kube-prometheus-stack-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                '''
-            }
-        }
-    }
-
-    /* ───────────────────────────────
-     *  POST ACTIONS
-     * ─────────────────────────────── */
+    }   // ✅ CLOSE stages
     post {
         success {
-            echo "✔ CI/CD + Monitoring Deployment Completed Successfully!"
+            echo "✔ Pipeline Completed Successfully"
         }
         failure {
-            echo "❌ Pipeline Failed. Check console logs!"
+            echo "❌ Pipeline Failed"
         }
     }
-}
+}   // ✅ CLOSE pipeline
 

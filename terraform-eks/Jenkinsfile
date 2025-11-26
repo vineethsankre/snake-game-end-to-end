@@ -1,38 +1,44 @@
 pipeline {
     agent any
 
-    environment {
-        AWS_CREDS = credentials('aws-eks-creds')
-    }
-
     stages {
-        stage('Checkout') {
-            steps { git 'https://github.com/your-repo/terraform-eks.git' }
+
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
         }
 
         stage('Terraform Init') {
             steps {
-                sh '''
-                terraform init
-                '''
+                dir('terraform-eks') {
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                dir('terraform-eks') {
+                    sh 'terraform validate'
+                }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                sh '''
-                terraform plan
-                '''
+                dir('terraform-eks') {
+                    sh 'terraform plan'
+                }
             }
         }
 
         stage('Terraform Apply') {
             steps {
-                sh '''
-                terraform apply -auto-approve
-                '''
+                dir('terraform-eks') {
+                    sh 'terraform apply -auto-approve'
+                }
             }
         }
     }
 }
-
