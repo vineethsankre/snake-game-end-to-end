@@ -41,17 +41,18 @@ pipeline {
          * SONAR SCAN
          * ───────────────────────────────────────────── */
         stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('MySonar') {
-                    script {
-                        def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                        sh """
+    steps {
+        withSonarQubeEnv('MySonar') {
+            withCredentials([string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')]) {
+                script {
+                    def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                    sh '''
                         ${scannerHome}/bin/sonar-scanner \
                           -Dsonar.projectKey=snake \
                           -Dsonar.sources=. \
                           -Dsonar.host.url=$SONAR_HOST_URL \
-                          -Dsonar.token=$SONAR
-                        """
+                          -Dsonar.token=$SONAR_TOKEN
+                    '''
                     }
                 }
             }
