@@ -112,7 +112,8 @@ pipeline {
               --region $REGION \
               --kubeconfig $KUBECONFIG_PATH
 
-            kubectl version --short
+            kubectl version --client --output=yaml || kubectl version --client
+
             '''
         }
     }
