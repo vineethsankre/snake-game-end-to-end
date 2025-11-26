@@ -46,13 +46,16 @@ pipeline {
             withCredentials([string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')]) {
                 script {
                     def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                    sh '''
+                    sh """
                         ${scannerHome}/bin/sonar-scanner \
                           -Dsonar.projectKey=snake \
                           -Dsonar.sources=. \
-                          -Dsonar.host.url=$SONAR_HOST_URL \
-                          -Dsonar.token=$SONAR_TOKEN
-                    '''
+                          -Dsonar.host.url=${env.SONAR_HOST_URL} \
+                          -Dsonar.token=${SONAR_TOKEN} \
+                          -Dsonar.exclusions=**/.terraform/**,**/terraform-eks/**,**/k8s/**,**/.git/**,**/*.gz,**/*.tar,**/*.tar.gz \
+                          -Dsonar.javascript.exclusions=**/* \
+                          -Dsonar.typescript.exclusions=**/*
+                    """
                     }
                 }
             }
