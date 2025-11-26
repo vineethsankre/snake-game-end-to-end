@@ -137,16 +137,22 @@ pipeline {
         }
 
         stage('Verify Monitoring') {
-            steps {
-                sh '''
-                export PATH=$BIN_PATH:$PATH
-                export KUBECONFIG=$KUBECONFIG_PATH
+    steps {
+        sh '''
+        export PATH=$BIN_PATH:$PATH
+        export KUBECONFIG=$KUBECONFIG_PATH
 
-                kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
-                kubectl rollout status statefulset/kube-prometheus-stack-prometheus -n monitoring --timeout=180s
-                '''
-            }
-        }
+        echo "🔍 Checking Grafana..."
+        kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
+
+        echo "🔍 Checking Prometheus..."
+        kubectl rollout status deployment/kube-prometheus-stack-prometheus -n monitoring --timeout=180s || \
+        kubectl rollout status statefulset/kube-prometheus-stack-prometheus -n monitoring --timeout=180s
+
+        echo "✅ Monitoring Ready"
+        '''
+    }
+}
 
         stage('Get Application URL') {
             steps {
