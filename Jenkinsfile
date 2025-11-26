@@ -144,7 +144,8 @@ pipeline {
             }
         }
 
-        /* stage('Get Application URL') {
+        /* 
+stage('Get Application URL') {
     steps {
         script {
             sh """
@@ -162,7 +163,8 @@ pipeline {
         }
     }
 }
-        */
+*/
+
         
         stage('Get Grafana URL & Credentials + Import Dashboards') {
             steps {
