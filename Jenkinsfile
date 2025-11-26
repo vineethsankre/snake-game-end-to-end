@@ -127,7 +127,7 @@ pipeline {
         /* ─────────────────────────────────────────────
          * VERIFY ROLLOUT
          * ───────────────────────────────────────────── */
-        stage('Verify Rollout') {
+                stage('Verify Rollout') {
             steps {
                 sh '''
                 export PATH=$BIN_PATH:$PATH
@@ -137,6 +137,7 @@ pipeline {
             }
         }
 
+    }   // ✅ CLOSE stages
     post {
         success {
             echo "✔ Pipeline Completed Successfully"
@@ -145,4 +146,5 @@ pipeline {
             echo "❌ Pipeline Failed"
         }
     }
-}
+}   // ✅ CLOSE pipeline
+
