@@ -99,6 +99,10 @@ pipeline {
             export AWS_REGION=$REGION
             export KUBECONFIG=$KUBECONFIG_PATH
 
+            export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+            export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+
             mkdir -p $HOME_DIR/.kube
             chown -R jenkins:jenkins $HOME_DIR/.kube
 
