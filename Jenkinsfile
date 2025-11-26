@@ -156,18 +156,24 @@ pipeline {
     }
 }
         stage('Get Application URL') {
-            steps {
-                script {
-                    sh '''
-                    export KUBECONFIG=$KUBECONFIG_PATH
-                    echo "🌐 Application URL:"
-                    kubectl get svc snake-game -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
-                    echo
-                    '''
-                }
-            }
-        }
+    steps {
+        script {
+            sh """
+            export KUBECONFIG=$KUBECONFIG_PATH
+            echo "🌐 Application URL:"
 
+            SVC=$(kubectl get svc -n $NAMESPACE -l app=$SERVICE_NAME \
+                -o jsonpath="{.items[0].metadata.name}")
+
+            echo "Detected service: $SVC"
+
+            kubectl get svc $SVC -n $NAMESPACE \
+                -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+            echo
+            """
+        }
+    }
+}
         stage('Get Grafana URL') {
             steps {
                 script {
