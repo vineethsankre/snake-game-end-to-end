@@ -16,64 +16,45 @@ pipeline {
 
     stages {
 
-        /* ─────────────────────────────────────────────
-         * CHECKOUT CODE
-         * ───────────────────────────────────────────── */
         stage('Checkout Code') {
             steps {
                 git 'https://github.com/Jithendarramagiri1998/snake-game.git'
             }
         }
 
-        /* ─────────────────────────────────────────────
-         * MAVEN BUILD
-         * ───────────────────────────────────────────── */
         stage('Maven Build') {
             when { expression { fileExists('pom.xml') } }
             steps {
-                sh '''
-                mvn clean package -DskipTests
-                '''
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        /* ─────────────────────────────────────────────
-         * SONAR SCAN
-         * ───────────────────────────────────────────── */
         stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('MySonar') {
-            withCredentials([string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')]) {
-                script {
-                    def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                    sh """
-                        ${scannerHome}/bin/sonar-scanner \
-                          -Dsonar.projectKey=snake \
-                          -Dsonar.sources=. \
-                          -Dsonar.host.url=${env.SONAR_HOST_URL} \
-                          -Dsonar.token=${SONAR_TOKEN} \
-                          -Dsonar.exclusions=**/.terraform/**,**/terraform-eks/**,**/k8s/**,**/.git/**,**/*.gz,**/*.tar,**/*.tar.gz \
-                          -Dsonar.javascript.exclusions=**/* \
-                          -Dsonar.typescript.exclusions=**/*
-                    """
+            steps {
+                withSonarQubeEnv('MySonar') {
+                    withCredentials([string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')]) {
+                        script {
+                            def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                            sh """
+                                ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=snake \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=${env.SONAR_HOST_URL} \
+                                -Dsonar.token=${SONAR_TOKEN} \
+                                -Dsonar.exclusions=**/.terraform/**,**/terraform-eks/**,**/k8s/**,**/.git/**,**/*.gz,**/*.tar,**/*.tar.gz
+                            """
+                        }
                     }
                 }
             }
         }
-    }
 
-        /* ─────────────────────────────────────────────
-         * TRIVY SCAN
-         * ───────────────────────────────────────────── */
         stage('Trivy Scan') {
             steps {
                 sh 'trivy fs . --exit-code 0 --severity HIGH,CRITICAL'
             }
         }
 
-        /* ─────────────────────────────────────────────
-         * DOCKER BUILD + PUSH
-         * ───────────────────────────────────────────── */
         stage('Docker Build & Push') {
             steps {
                 sh '''
@@ -88,39 +69,33 @@ pipeline {
             }
         }
 
-        /* ─────────────────────────────────────────────
-         * UPDATE KUBECONFIG FOR JENKINS USER
-         * ───────────────────────────────────────────── */
         stage('Update kubeconfig') {
-    steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
-            sh '''
-            export HOME=$HOME_DIR
-            export PATH=$BIN_PATH:$PATH
-            export AWS_REGION=$REGION
-            export KUBECONFIG=$KUBECONFIG_PATH
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
+                    sh '''
+                    export HOME=$HOME_DIR
+                    export PATH=$BIN_PATH:$PATH
+                    export AWS_REGION=$REGION
+                    export KUBECONFIG=$KUBECONFIG_PATH
 
-            export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-            export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-            export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+                    export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+                    export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+                    export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
 
-            mkdir -p $HOME_DIR/.kube
-            chown -R jenkins:jenkins $HOME_DIR/.kube
+                    mkdir -p $HOME_DIR/.kube
+                    chown -R jenkins:jenkins $HOME_DIR/.kube
 
-            aws eks update-kubeconfig \
-              --name $CLUSTER_NAME \
-              --region $REGION \
-              --kubeconfig $KUBECONFIG_PATH
+                    aws eks update-kubeconfig \
+                      --name $CLUSTER_NAME \
+                      --region $REGION \
+                      --kubeconfig $KUBECONFIG_PATH
 
-           kubectl version --client
-            '''
+                    kubectl version --client
+                    '''
+                }
+            }
         }
-    }
-}
 
-        /* ─────────────────────────────────────────────
-         * DEPLOY TO EKS
-         * ───────────────────────────────────────────── */
         stage('Deploy to EKS') {
             steps {
                 sh '''
@@ -135,10 +110,7 @@ pipeline {
             }
         }
 
-        /* ─────────────────────────────────────────────
-         * VERIFY ROLLOUT
-         * ───────────────────────────────────────────── */
-                stage('Verify Rollout') {
+        stage('Verify Rollout') {
             steps {
                 sh '''
                 export PATH=$BIN_PATH:$PATH
@@ -148,14 +120,87 @@ pipeline {
             }
         }
 
-    }   // ✅ CLOSE stages
-    post {
-        success {
-            echo "✔ Pipeline Completed Successfully"
-        }
-        failure {
-            echo "❌ Pipeline Failed"
-        }
-    }
-}   // ✅ CLOSE pipeline
+        stage('Deploy Monitoring') {
+            steps {
+                sh '''
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
 
+                helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+                helm repo update
+
+                kubectl get ns monitoring || kubectl create namespace monitoring
+
+                helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring
+                '''
+            }
+        }
+
+        stage('Verify Monitoring') {
+            steps {
+                sh '''
+                export PATH=$BIN_PATH:$PATH
+                export KUBECONFIG=$KUBECONFIG_PATH
+
+                kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
+                kubectl rollout status statefulset/kube-prometheus-stack-prometheus -n monitoring --timeout=180s
+                '''
+            }
+        }
+
+        stage('Get Application URL') {
+            steps {
+                script {
+                    sh '''
+                    export KUBECONFIG=$KUBECONFIG_PATH
+                    echo "🌐 Application URL:"
+                    kubectl get svc snake-game -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+                    echo
+                    '''
+                }
+            }
+        }
+
+        stage('Get Grafana URL') {
+            steps {
+                script {
+                    sh '''
+                    export KUBECONFIG=$KUBECONFIG_PATH
+                    echo "🌐 Grafana URL:"
+                    kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+                    echo
+                    '''
+                }
+            }
+        }
+
+        stage('Import Dashboards') {
+            steps {
+                script {
+                    sh '''
+                    export KUBECONFIG=$KUBECONFIG_PATH
+
+                    GRAFANA_HOST=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+
+                    ADMIN_PASS=$(kubectl get secret --namespace monitoring kube-prometheus-stack-grafana \
+                        -o jsonpath="{.data.admin-password}" | base64 -d)
+
+                    curl -X POST http://admin:${ADMIN_PASS}@${GRAFANA_HOST}/api/dashboards/import \
+                        -H "Content-Type: application/json" \
+                        -d '{"dashboard": {"id": 15759},"overwrite": true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}]}'
+
+                    curl -X POST http://admin:${ADMIN_PASS}@${GRAFANA_HOST}/api/dashboards/import \
+                        -H "Content-Type: application/json" \
+                        -d '{"dashboard": {"id": 1860},"overwrite": true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}]}'
+                    '''
+                }
+            }
+        }
+
+    }
+
+    post {
+        success { echo "✔ Pipeline Completed Successfully" }
+        failure { echo "❌ Pipeline Failed" }
+    }
+}
