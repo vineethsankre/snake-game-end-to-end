@@ -145,9 +145,11 @@ pipeline {
         echo "🔍 Checking Grafana..."
         kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
 
-        echo "🔍 Checking Prometheus..."
-        kubectl rollout status deployment/kube-prometheus-stack-prometheus -n monitoring --timeout=180s || \
-        kubectl rollout status statefulset/kube-prometheus-stack-prometheus -n monitoring --timeout=180s
+        echo "🔍 Checking Prometheus Pod..."
+        kubectl get pod -n monitoring | grep prometheus-kube-prometheus-stack-prometheus
+
+        echo "🔍 Waiting for Prometheus to be Ready..."
+        kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=180s
 
         echo "✅ Monitoring Ready"
         '''
