@@ -136,7 +136,7 @@ pipeline {
             }
         }
 
-        stage('Verify Monitoring') {
+       stage('Verify Monitoring') {
     steps {
         sh '''
         export PATH=$BIN_PATH:$PATH
@@ -146,16 +146,15 @@ pipeline {
         kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
 
         echo "🔍 Checking Prometheus Pod..."
-        kubectl get pod -n monitoring | grep prometheus-kube-prometheus-stack-prometheus
+        kubectl get pods -n monitoring | grep prometheus-kube-prometheus-stack-prometheus || true
 
-        echo "🔍 Waiting for Prometheus to be Ready..."
-        kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=180s
+        echo "🔍 Waiting for Prometheus Ready..."
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=180s
 
         echo "✅ Monitoring Ready"
         '''
     }
 }
-
         stage('Get Application URL') {
             steps {
                 script {
