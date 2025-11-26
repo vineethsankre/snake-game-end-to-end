@@ -91,25 +91,26 @@ pipeline {
          * UPDATE KUBECONFIG FOR JENKINS USER
          * ───────────────────────────────────────────── */
         stage('Update kubeconfig') {
-            steps {
-                withCredentials([aws(credentialsId: 'aws-jenkins-creds')]) {
-                    sh '''
-                    export HOME=$HOME_DIR
-                    export PATH=$BIN_PATH:$PATH
-                    export KUBECONFIG=$KUBECONFIG_PATH
+    steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
+            sh '''
+            export HOME=$HOME_DIR
+            export PATH=$BIN_PATH:$PATH
+            export AWS_REGION=$REGION
+            export KUBECONFIG=$KUBECONFIG_PATH
 
-                    mkdir -p $HOME_DIR/.kube
+            mkdir -p $HOME_DIR/.kube
 
-                    aws eks update-kubeconfig \
-                      --name $CLUSTER_NAME \
-                      --region $REGION \
-                      --kubeconfig $KUBECONFIG_PATH
+            aws eks update-kubeconfig \
+              --name $CLUSTER_NAME \
+              --region $REGION \
+              --kubeconfig $KUBECONFIG_PATH
 
-                    kubectl get nodes
-                    '''
-                }
-            }
+            kubectl version --short
+            '''
         }
+    }
+}
 
         /* ─────────────────────────────────────────────
          * DEPLOY TO EKS
