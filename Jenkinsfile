@@ -100,6 +100,7 @@ pipeline {
             export KUBECONFIG=$KUBECONFIG_PATH
 
             mkdir -p $HOME_DIR/.kube
+            chown -R jenkins:jenkins $HOME_DIR/.kube
 
             aws eks update-kubeconfig \
               --name $CLUSTER_NAME \
