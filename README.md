@@ -2,7 +2,7 @@
 **EKS Cluster + CI/CD + Monitoring (Prometheus & Grafana) + Application Deployment**
 
 This document explains the complete end-to-end setup starting from creating a server, installing all required tools, configuring Jenkins, running Terraform to create EKS, and deploying the application with monitoring.  
-Everything below is cleaned, corrected, structured, and ready for your GitHub README.
+Everything below is cleaned, corrected, structured.
 
 ---
 ## Project Architecture Diagram
@@ -51,7 +51,6 @@ Install all tools used for **CI/CD**, **Infrastructure**, **Image Building**, **
 ##  📌 3. Clone or Fork My Repository
 git clone https://github.com/<your-repo>.git
 cd <your-repo>
-
 
 Follow my folder structure exactly as it exists in the repository.
 
@@ -586,5 +585,6 @@ Application UI ![Image](images/Application_UI.png)
 Terraform apply output ![Image](images/Terraform_apply_output.png) 
 
 SonarQube report ![Image](images/SonarQube_report.png)
+
 
 
