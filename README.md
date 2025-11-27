@@ -557,11 +557,11 @@ Application	ALB DNS from EKS
 
 ## 📌 11. Notes
 
-You can use both Jenkinsfiles (Terraform + Application) or use only the Application Jenkinsfile if you prefer running Terraform manually.
+● You can use both Jenkinsfiles (Terraform + Application) or use only the Application Jenkinsfile if you prefer running Terraform manually.
 
-Terraform can be executed either through the Jenkins pipeline or manually using CLI commands.
+● Terraform can be executed either through the Jenkins pipeline or manually using CLI commands.
 
-When using the Application Jenkinsfile (Pipeline B), the pipeline automatically prints:
+● When using the Application Jenkinsfile (Pipeline B), the pipeline automatically prints:
 
 Application DNS URL
 
@@ -571,19 +571,20 @@ Grafana Admin Password
 
 These outputs will appear directly in the Jenkins console after the pipeline finishes.
 
-If you face any issues during the setup or execution, you can troubleshoot or contact me anytime.
+● If you face any issues during the setup or execution, you can troubleshoot or contact me anytime.
 
-Make sure to follow your repository folder structure exactly when creating Jenkins jobs to avoid path-related errors.
+● Make sure to follow your repository folder structure exactly when creating Jenkins jobs to avoid path-related errors.
 
 ## 📸 12. Output Screenshots (Add Here)
 
-Jenkins Pipelines Success ![Architecture](images/Pipelines_Success.png)
+Jenkins Pipelines Success ![Image](images/Pipelines_Success.png)
 
-Grafana Dashboard ![Architecture](images/Grafana_Dashboard.png) 
+Grafana Dashboard ![Image](images/Grafana_Dashboard.png) 
 
-Application UI ![Architecture](images/Application_UI.png) 
+Application UI ![Image](images/Application_UI.png) 
 
-Terraform apply output ![Architecture](images/Terraform_apply_output.png) 
+Terraform apply output ![Image](images/Terraform_apply_output.png) 
 
-SonarQube report ![Architecture](images/SonarQube_report.png)
+SonarQube report ![Image](images/SonarQube_report.png)
+
 
