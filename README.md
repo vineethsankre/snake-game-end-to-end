@@ -576,15 +576,16 @@ These outputs will appear directly in the Jenkins console after the pipeline fin
 
 ## 📸 12. Output Screenshots (Add Here)
 
-Jenkins Pipelines Success ![Image](images/Pipelines_Success.png)
+# Jenkins Pipelines Success ![Image](images/Pipelines_Success.png)
 
-Grafana Dashboard ![Image](images/Grafana_Dashboard.png) 
+# Grafana Dashboard ![Image](images/Grafana_Dashboard.png) 
 
-Application UI ![Image](images/Application_UI.png) 
+# Application UI ![Image](images/Application_UI.png) 
 
-Terraform apply output ![Image](images/Terraform_apply_output.png) 
+# Terraform apply output ![Image](images/Terraform_apply_output.png) 
 
-SonarQube report ![Image](images/SonarQube_report.png)
+# SonarQube report ![Image](images/SonarQube_report.png)
+
 
 
 
