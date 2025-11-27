@@ -577,14 +577,13 @@ Make sure to follow your repository folder structure exactly when creating Jenki
 
 ## 📸 12. Output Screenshots (Add Here)
 
-Jenkins Pipelines Success
+Jenkins Pipelines Success ![Architecture](images/Pipelines_Success.png)
 
-EKS Cluster Screenshot
+Grafana Dashboard ![Architecture](images/Grafana_Dashboard.png) 
 
-Grafana Dashboard
+Application UI ![Architecture](images/Application_UI.png) 
 
-Application UI
+Terraform apply output ![Architecture](images/Terraform_apply_output.png) 
 
-Terraform apply output
+SonarQube report ![Architecture](images/SonarQube_report.png)
 
-SonarQube report
