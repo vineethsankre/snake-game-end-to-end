@@ -12,7 +12,10 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir('terraform-eks') {
-                    sh 'terraform init'
+                    // Injecting AWS credentials to access the S3 backend
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
+                        sh 'terraform init'
+                    }
                 }
             }
         }
@@ -28,7 +31,10 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir('terraform-eks') {
-                    sh 'terraform plan'
+                    // Injecting AWS credentials to read current infrastructure state
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
+                        sh 'terraform plan'
+                    }
                 }
             }
         }
@@ -36,7 +42,10 @@ pipeline {
         stage('Terraform Apply') {
             steps {
                 dir('terraform-eks') {
-                    sh 'terraform apply -auto-approve'
+                    // Injecting AWS credentials to provision the cluster
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
+                        sh 'terraform apply -auto-approve'
+                    }
                 }
             }
         }
