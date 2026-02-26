@@ -44,7 +44,7 @@ pipeline {
                 dir('terraform-eks') {
                     // Injecting AWS credentials to provision the cluster
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds']]) {
-                        sh 'terraform apply -auto-approve'
+                        sh 'terraform destroy -auto-approve'
                     }
                 }
             }
